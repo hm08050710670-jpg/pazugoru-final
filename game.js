@@ -65,7 +65,7 @@ function matchBurst(point,size,combo){const count=Math.min(16,6+Math.max(0,size-
     playerNumber:$('playerNumber'), count:$('turnCount'), attackCount:$('attackCount'),
     dragon:$('dragon'), anchor:$('dragonAnchor'), effects:$('effects'), word:$('battle-word'),
     menu:$('menuButton'), help:$('helpLayer'), result:$('resultLayer') };
-  const bossMusic=new Audio('boss-bgm.wav');bossMusic.loop=true;bossMusic.preload='auto';bossMusic.volume=.32;
+  const bossMusic=new window.Audio('boss-bgm.wav');bossMusic.loop=true;bossMusic.preload='auto';bossMusic.volume=.32;
   function stopBossMusic(){try{bossMusic.pause();bossMusic.currentTime=0;}catch(e){}}
   async function startBossMusic(){
     try{Audio.stopEffects();bossMusic.currentTime=0;await bossMusic.play();}catch(e){}
