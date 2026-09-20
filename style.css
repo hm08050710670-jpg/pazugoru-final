@@ -377,3 +377,24 @@ html,body{margin:0!important;padding:0!important;width:100%!important;max-width:
 /* v2.90 canonical monster presentation */
 .dragon-anchor{--monster-base:clamp(190px,34vw,270px)!important}
 .dragon,.dragon img{max-width:none!important}
+
+/* Production boot gate + tactile buttons */
+.boot-loader{position:absolute;inset:0;z-index:9999;display:grid;place-items:center;background:#03251f;transition:opacity .22s ease;touch-action:none}
+.boot-loader.ready{opacity:0;pointer-events:none}
+.boot-card{display:flex;flex-direction:column;align-items:center;gap:12px;color:#fff;font:800 18px/1 system-ui;letter-spacing:.18em}
+.boot-ball{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 35% 28%,#fff 0 20%,#dce8e3 21% 60%,#a9bbb4 61%);animation:bootSpin .8s linear infinite}
+#bootPercent{font-size:13px;letter-spacing:.08em;opacity:.8}
+@keyframes bootSpin{to{transform:rotate(360deg)}}
+.start-hit,.stage-node{transition:transform .08s ease,filter .08s ease!important;touch-action:manipulation}
+.start-hit.pressed,.stage-node.pressed{transform:translateY(4px) scale(.975)!important;filter:brightness(.88)!important}
+
+/* Boss defeat -> dissolve -> sparkling CLEAR */
+.boss-defeat-sparkles{position:absolute;inset:0;z-index:24;pointer-events:none;overflow:hidden}
+.boss-defeat-sparkles i{position:absolute;left:var(--x);top:var(--y);width:var(--size);height:var(--size);opacity:0;animation:bossSparkle .85s var(--delay) ease-out infinite}
+.boss-defeat-sparkles i:before,.boss-defeat-sparkles i:after{content:"";position:absolute;background:#fff7b0;border-radius:99px;box-shadow:0 0 10px #ffe36a}
+.boss-defeat-sparkles i:before{width:100%;height:22%;top:39%;left:0}.boss-defeat-sparkles i:after{height:100%;width:22%;left:39%;top:0}
+@keyframes bossSparkle{0%{opacity:0;transform:scale(.25) rotate(0)}45%{opacity:1;transform:scale(1.25) rotate(45deg)}100%{opacity:0;transform:scale(.45) rotate(90deg)}}
+.boss-clear-flash{position:absolute;inset:0;z-index:30;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle,rgba(255,247,177,.34),transparent 58%);animation:clearFlash 1.45s ease-out both}
+.boss-clear-flash span{font:900 clamp(54px,15vw,108px)/1 system-ui,sans-serif;color:#fff4a8;-webkit-text-stroke:3px #9a5a00;text-shadow:0 4px 0 #633900,0 0 14px #fff,0 0 32px #ffd84f;transform:scale(.45);animation:clearPop .62s cubic-bezier(.15,.85,.25,1.3) forwards}
+@keyframes clearPop{70%{transform:scale(1.13)}100%{transform:scale(1)}}
+@keyframes clearFlash{0%{opacity:0}18%,72%{opacity:1}100%{opacity:0}}

@@ -65,6 +65,11 @@ function matchBurst(point,size,combo){const count=Math.min(16,6+Math.max(0,size-
     playerNumber:$('playerNumber'), count:$('turnCount'), attackCount:$('attackCount'),
     dragon:$('dragon'), anchor:$('dragonAnchor'), effects:$('effects'), word:$('battle-word'),
     menu:$('menuButton'), help:$('helpLayer'), result:$('resultLayer') };
+  const bossMusic=new Audio('boss-bgm.wav');bossMusic.loop=true;bossMusic.preload='auto';bossMusic.volume=.32;
+  function stopBossMusic(){try{bossMusic.pause();bossMusic.currentTime=0;}catch(e){}}
+  async function startBossMusic(){
+    try{Audio.stopEffects();bossMusic.currentTime=0;await bossMusic.play();}catch(e){}
+  }
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const state = { phase:'loading', grid:[], tiles:new Map(), nextId:1, drag:null,
     turn:0, enemy:CONFIG.enemyMax, player:CONFIG.playerMax, maxCombo:0,
@@ -741,7 +746,18 @@ async function enemyShot(epoch){
       if(state.phase!=='load-error')hideStageMap();
     }
   }
+  async function bossDefeatClearFx(){
+    const d=ui.dragon,a=ui.anchor,h=ui.hero;if(!d||!a||!h)return;
+    // lock interaction while the boss dissolves
+    const sparkle=document.createElement('div');sparkle.className='boss-defeat-sparkles';h.appendChild(sparkle);
+    for(let i=0;i<24;i++){const s=document.createElement('i');s.style.setProperty('--x',(12+Math.random()*76)+'%');s.style.setProperty('--y',(16+Math.random()*60)+'%');s.style.setProperty('--delay',(Math.random()*.55)+'s');s.style.setProperty('--size',(4+Math.random()*9)+'px');sparkle.appendChild(s)}
+    const fade=animateElement(a,[{opacity:1,filter:'brightness(1) saturate(1)',transform:'scale(1)'},{opacity:.72,filter:'brightness(1.7) saturate(.7)',transform:'scale(1.025)',offset:.35},{opacity:.18,filter:'brightness(2.8) blur(1px)',transform:'scale(.98)',offset:.78},{opacity:0,filter:'brightness(3) blur(3px)',transform:'scale(.92)'}],{duration:motion(1350),easing:'ease-out',fill:'forwards'});
+    await wait(motion(1450),state.epoch);if(fade)fade.cancel();a.style.opacity='0';
+    const clear=document.createElement('div');clear.className='boss-clear-flash';clear.innerHTML='<span>CLEAR!</span>';h.appendChild(clear);
+    await wait(motion(1450),state.epoch);clear.remove();sparkle.remove();
+  }
   async function finish(win){
+    if(COURSE_BOSS.has(activeStage?.id))stopBossMusic();
     setPhase('ended');clearTimeout(faceTimer);clearTimeout(expressionTimer);
     const currentCourse=courseOf(activeStage?.id),nextId=Assets.nextId();
     if(win&&!COURSE_BOSS.has(activeStage?.id)&&nextId&&courseOf(nextId)===currentCourse){
@@ -750,7 +766,7 @@ async function enemyShot(epoch){
       catch(e){ui.result.hidden=false;modalMode(true);setStatus('次のステージを読み込めませんでした');}
       return;
     }
-    if(win&&COURSE_BOSS.has(activeStage?.id))markCourseClear(currentCourse);
+    if(win&&COURSE_BOSS.has(activeStage?.id)){await bossDefeatClearFx();markCourseClear(currentCourse);}
     if(!win)setPose('wink');
     ui.result.classList.toggle('win',win);ui.result.hidden=false;modalMode(true);
     $('resultTitle').textContent=win?'STAGE '+currentCourse+' CLEAR!':'GAME OVER';
@@ -758,12 +774,12 @@ async function enemyShot(epoch){
     const nsb=$('nextStageButton');if(nsb)nsb.hidden=true;
     $('resultTurns').textContent=`${state.turn} ターン`;$('resultCombo').textContent=`最高 ${state.maxCombo} COMBO`;
     let mapBtn=$('mapReturnButton');
-    if(!mapBtn){mapBtn=document.createElement('button');mapBtn.id='mapReturnButton';mapBtn.className='map-return';mapBtn.textContent='ステージ選択へ';$('retryButton').parentElement.appendChild(mapBtn);mapBtn.addEventListener('click',()=>{ui.result.hidden=true;modalMode(false);showStageMap()});}
+    if(!mapBtn){mapBtn=document.createElement('button');mapBtn.id='mapReturnButton';mapBtn.className='map-return';mapBtn.textContent='ステージ選択へ';$('retryButton').parentElement.appendChild(mapBtn);mapBtn.addEventListener('click',()=>{ui.result.hidden=true;modalMode(false);stopBossMusic();showStageMap()});}
     mapBtn.hidden=false;$('retryButton').textContent=win?'もう一度あそぶ':'もう一度挑戦';$('retryButton').focus({preventScroll:true});
   }
   async function bossIntro(){
     const layer=$('bossIntro');if(!layer)return;
-    layer.hidden=false;layer.setAttribute('aria-hidden','false');BattleSound.enemy();
+    layer.hidden=false;layer.setAttribute('aria-hidden','false');BattleSound.enemy();void startBossMusic();
     const word=layer.querySelector('.boss-intro-word');
     const a=animateElement(word,[{transform:'scale(.55)',opacity:0},{transform:'scale(1.16)',opacity:1,offset:.58},{transform:'scale(1)',opacity:1}],{duration:motion(760),easing:'cubic-bezier(.18,.8,.25,1)',fill:'both'});
     await wait(motion(1250),state.epoch);layer.hidden=true;layer.setAttribute('aria-hidden','true');if(a)a.cancel();
@@ -774,7 +790,7 @@ async function enemyShot(epoch){
   if(menuMapButton)menuMapButton.addEventListener('click',()=>{
     const ok=confirm('現在のバトルを終了してステージ選択に戻りますか？');
     if(!ok)return;
-    ui.help.hidden=true;modalMode(false);setPhase('loading');showStageMap();
+    ui.help.hidden=true;modalMode(false);stopBossMusic();setPhase('loading');showStageMap();
   });
   $('resetButton').addEventListener('click',()=>resetGame());$('retryButton').addEventListener('click',()=>resetGame());
   
@@ -788,6 +804,7 @@ async function enemyShot(epoch){
   $('reactionLayer').addEventListener('click',e=>{const btn=e.target.closest('[data-preview-pose]');if(btn)previewReaction(btn.dataset.previewPose);});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&previewOpen){e.preventDefault();closeReactions();}});
   async function loadBattle(id){
+    ui.anchor.style.opacity='1';
     const seq=++loadSerial;state.epoch++;
     if(state.drag)cancelDrag('');
     clearInterval(idleClock);clearTimeout(faceTimer);clearTimeout(expressionTimer);directorReady=false;
@@ -819,13 +836,31 @@ async function enemyShot(epoch){
   window.addEventListener('pagehide',()=>{clearInterval(idleClock);if(poseAnimation)poseAnimation.cancel();});
   window.addEventListener('pageshow',()=>{if(directorReady){clearInterval(idleClock);idleClock=setInterval(idlePose,700);}});
 
-  document.querySelectorAll('.stage-node[data-course]').forEach(b=>b.addEventListener('click',()=>{if(!b.disabled)startCourse(Number(b.dataset.course))}));
+  function uiClick(){
+    try{
+      const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
+      const c=uiClick.ctx||(uiClick.ctx=new C()),o=c.createOscillator(),gain=c.createGain();
+      o.type='sine';o.frequency.setValueAtTime(760,c.currentTime);o.frequency.exponentialRampToValueAtTime(520,c.currentTime+.055);
+      gain.gain.setValueAtTime(.055,c.currentTime);gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+.06);
+      o.connect(gain);gain.connect(c.destination);o.start();o.stop(c.currentTime+.065);
+    }catch(e){}
+  }
+  function pressFx(b){b.classList.add('pressed');uiClick();setTimeout(()=>b.classList.remove('pressed'),90)}
+  document.querySelectorAll('.stage-node[data-course]').forEach(b=>b.addEventListener('click',()=>{if(!b.disabled){pressFx(b);setTimeout(()=>startCourse(Number(b.dataset.course)),70)}}));
   updateStageMap();
   const worldMapPreload=new Image();worldMapPreload.src='world-bg.webp';
+  (async()=>{
+    const loader=document.getElementById('bootLoader'),pct=document.getElementById('bootPercent');
+    const urls=['start-screen.webp','world-bg.webp','battle-riverside.webp','c1-korafu.png'];
+    let done=0;
+    const one=src=>new Promise(resolve=>{const im=new Image();const finish=()=>{done++;if(pct)pct.textContent=Math.round(done/urls.length*100)+'%';resolve()};im.onload=()=>{if(im.decode)im.decode().then(finish).catch(finish);else finish()};im.onerror=finish;im.src=src});
+    await Promise.race([Promise.all(urls.map(one)),new Promise(r=>setTimeout(r,5000))]);
+    if(loader){loader.classList.add('ready');setTimeout(()=>loader.remove(),260)}
+  })();
   const opening=document.getElementById('openingScreen'),map=document.getElementById('stageMap');
   if(map)map.hidden=true;
   const startButton=document.getElementById('gameStartButton');
-  if(startButton)startButton.addEventListener('click',()=>{opening.hidden=true;showStageMap();requestAnimationFrame(()=>{try{Audio.unlock().then(()=>Audio.start()).catch(()=>{});}catch(e){}});});
+  if(startButton)startButton.addEventListener('click',()=>{pressFx(startButton);setTimeout(()=>{opening.hidden=true;showStageMap();requestAnimationFrame(()=>{try{Audio.unlock().then(()=>Audio.start()).catch(()=>{});}catch(e){}});},70);});
 
   // Test-only helpers are absent from a normal URL. No server/score writes exist.
   if(new URLSearchParams(location.search).get('test')==='1'){
