@@ -821,10 +821,11 @@ async function enemyShot(epoch){
 
   document.querySelectorAll('.stage-node[data-course]').forEach(b=>b.addEventListener('click',()=>{if(!b.disabled)startCourse(Number(b.dataset.course))}));
   updateStageMap();
+  const worldMapPreload=new Image();worldMapPreload.src='world-bg.webp';
   const opening=document.getElementById('openingScreen'),map=document.getElementById('stageMap');
   if(map)map.hidden=true;
   const startButton=document.getElementById('gameStartButton');
-  if(startButton)startButton.addEventListener('click',async()=>{try{await Audio.unlock();}catch(e){} try{Audio.start();}catch(e){} opening.hidden=true;showStageMap();});
+  if(startButton)startButton.addEventListener('click',()=>{opening.hidden=true;showStageMap();requestAnimationFrame(()=>{try{Audio.unlock().then(()=>Audio.start()).catch(()=>{});}catch(e){}});});
 
   // Test-only helpers are absent from a normal URL. No server/score writes exist.
   if(new URLSearchParams(location.search).get('test')==='1'){
