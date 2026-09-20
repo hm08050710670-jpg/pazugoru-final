@@ -779,7 +779,7 @@ async function enemyShot(epoch){
   }
   async function bossIntro(){
     const layer=$('bossIntro');if(!layer)return;
-    layer.hidden=false;layer.setAttribute('aria-hidden','false');BattleSound.enemy();void startBossMusic();
+    layer.hidden=false;layer.setAttribute('aria-hidden','false');BattleSound.enemy();bossAlarm();setTimeout(()=>{void startBossMusic();},720);
     const word=layer.querySelector('.boss-intro-word');
     const a=animateElement(word,[{transform:'scale(.55)',opacity:0},{transform:'scale(1.16)',opacity:1,offset:.58},{transform:'scale(1)',opacity:1}],{duration:motion(760),easing:'cubic-bezier(.18,.8,.25,1)',fill:'both'});
     await wait(motion(1250),state.epoch);layer.hidden=true;layer.setAttribute('aria-hidden','true');if(a)a.cancel();
@@ -836,13 +836,35 @@ async function enemyShot(epoch){
   window.addEventListener('pagehide',()=>{clearInterval(idleClock);if(poseAnimation)poseAnimation.cancel();});
   window.addEventListener('pageshow',()=>{if(directorReady){clearInterval(idleClock);idleClock=setInterval(idlePose,700);}});
 
-  function uiClick(){
+  function getUiAudio(){
     try{
-      const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
-      const c=uiClick.ctx||(uiClick.ctx=new C()),o=c.createOscillator(),gain=c.createGain();
-      o.type='sine';o.frequency.setValueAtTime(760,c.currentTime);o.frequency.exponentialRampToValueAtTime(520,c.currentTime+.055);
-      gain.gain.setValueAtTime(.055,c.currentTime);gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+.06);
-      o.connect(gain);gain.connect(c.destination);o.start();o.stop(c.currentTime+.065);
+      const C=window.AudioContext||window.webkitAudioContext;
+      if(!C)return null;
+      const c=uiClick.ctx||(uiClick.ctx=new C());
+      if(c.state==='suspended')c.resume().catch(()=>{});
+      return c;
+    }catch(e){return null}
+  }
+  function uiClick(){
+    const c=getUiAudio();if(!c)return;
+    try{
+      const t=c.currentTime+.005,o=c.createOscillator(),gain=c.createGain();
+      o.type='square';o.frequency.setValueAtTime(920,t);o.frequency.exponentialRampToValueAtTime(520,t+.07);
+      gain.gain.setValueAtTime(.11,t);gain.gain.exponentialRampToValueAtTime(.001,t+.075);
+      o.connect(gain);gain.connect(c.destination);o.start(t);o.stop(t+.08);
+    }catch(e){}
+  }
+  function bossAlarm(){
+    const c=getUiAudio();if(!c)return;
+    try{
+      const t=c.currentTime+.02;
+      [0,.22,.44].forEach((d,i)=>{
+        const o=c.createOscillator(),gain=c.createGain();
+        o.type='sawtooth';o.frequency.setValueAtTime(i%2?690:940,t+d);
+        o.frequency.linearRampToValueAtTime(i%2?940:690,t+d+.18);
+        gain.gain.setValueAtTime(.075,t+d);gain.gain.exponentialRampToValueAtTime(.001,t+d+.19);
+        o.connect(gain);gain.connect(c.destination);o.start(t+d);o.stop(t+d+.20);
+      });
     }catch(e){}
   }
   function pressFx(b){b.classList.add('pressed');uiClick();setTimeout(()=>b.classList.remove('pressed'),90)}
@@ -860,7 +882,16 @@ async function enemyShot(epoch){
   const opening=document.getElementById('openingScreen'),map=document.getElementById('stageMap');
   if(map)map.hidden=true;
   const startButton=document.getElementById('gameStartButton');
-  if(startButton)startButton.addEventListener('click',()=>{pressFx(startButton);setTimeout(()=>{opening.hidden=true;showStageMap();requestAnimationFrame(()=>{try{Audio.unlock().then(()=>Audio.start()).catch(()=>{});}catch(e){}});},70);});
+  if(startButton)startButton.addEventListener('click',()=>{
+    pressFx(startButton);getUiAudio();
+    // iOS: unlock the boss music element during this real user gesture.
+    try{
+      const oldVol=bossMusic.volume;bossMusic.volume=0;bossMusic.currentTime=0;
+      const p=bossMusic.play();
+      if(p&&p.then)p.then(()=>{bossMusic.pause();bossMusic.currentTime=0;bossMusic.volume=oldVol;}).catch(()=>{bossMusic.volume=oldVol;});
+    }catch(e){}
+    setTimeout(()=>{opening.hidden=true;showStageMap();requestAnimationFrame(()=>{try{Audio.unlock().then(()=>Audio.start()).catch(()=>{});}catch(e){}});},105);
+  });
 
   // Test-only helpers are absent from a normal URL. No server/score writes exist.
   if(new URLSearchParams(location.search).get('test')==='1'){
