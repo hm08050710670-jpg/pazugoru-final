@@ -8,6 +8,9 @@
   const STORE='pazugoru.audio.mix.v30';
   let context=null, output=null, fxMaster=null, music=null, analyser=null;
   let buffer=null, decoding=null, source=null, requestCount=0, starts=0, maxConcurrent=0;
+  let bossBuffer=null,bossDecoding=null,bossSource=null;
+  let appearBuffer=null,appearDecoding=null,appearSource=null;
+  let musicMode='normal';
   let offset=0, startedAt=0, away=false, wanted=true, waiting=false, error='', pending=false;
   let bgmVolume=.14, effectsVolume=1, serial=0;
   const channels=new Map(), voices=new Set();
@@ -101,6 +104,7 @@
   }
   async function enable(origin='gesture'){
     if(!Ctor||document.hidden)return;
+    if(musicMode!=='normal'){const c=ensure();if(c&&c.state!=='running')c.resume().catch(()=>{});return;}
     away=false;wanted=true;const c=ensure();
     // resume occurs synchronously in the real tap handler; no synthetic gestures.
     const resume=c.resume().catch(()=>{});
@@ -116,6 +120,51 @@
       if(token===serial){error='BGMを読み込めませんでした。メニューの「音を再読み込み」で再試行できます。';console.warn('BGM load:',e.message);}
     }finally{clearTimeout(timer);if(token===serial){pending=false;render();}}
   }
+  async function getAppearBuffer(){
+    const c=ensure();if(!c)throw new Error('Web Audio unavailable');
+    if(appearBuffer)return appearBuffer;
+    if(appearDecoding)return appearDecoding;
+    appearDecoding=fetch('boss-appear.wav',{cache:'force-cache'}).then(r=>{if(!r.ok)throw new Error('boss appear '+r.status);return r.arrayBuffer()})
+      .then(ab=>c.decodeAudioData(ab)).then(b=>appearBuffer=b).finally(()=>appearDecoding=null);
+    return appearDecoding;
+  }
+  function stopAppear(){if(appearSource){try{appearSource.stop()}catch(e){}try{appearSource.disconnect()}catch(e){}appearSource=null}}
+  async function playBossAppear(){
+    const c=ensure();if(!c)return;
+    musicMode='boss-appear';serial++;stopSource();stopBoss();stopAppear();
+    if(c.state!=='running')await c.resume().catch(()=>{});
+    const b=await getAppearBuffer();
+    return new Promise(resolve=>{
+      const n=c.createBufferSource(),g=c.createGain();g.gain.value=.62;n.buffer=b;n.connect(g);g.connect(output);
+      appearSource=n;n.onended=()=>{if(appearSource===n)appearSource=null;resolve()};n.start(0);
+    });
+  }
+  async function getBossBuffer(){
+    const c=ensure();if(!c)throw new Error('Web Audio unavailable');
+    if(bossBuffer)return bossBuffer;
+    if(bossDecoding)return bossDecoding;
+    bossDecoding=fetch('boss-bgm.wav',{cache:'force-cache'}).then(r=>{if(!r.ok)throw new Error('boss bgm '+r.status);return r.arrayBuffer()})
+      .then(ab=>c.decodeAudioData(ab)).then(b=>bossBuffer=b).finally(()=>bossDecoding=null);
+    return bossDecoding;
+  }
+  function stopBoss(){
+    if(bossSource){try{bossSource.stop()}catch(e){}try{bossSource.disconnect()}catch(e){}bossSource=null}
+  }
+  async function playBoss(){
+    const c=ensure();if(!c)return;
+    musicMode='boss';serial++;stopSource();stopAppear();
+    if(c.state!=='running')await c.resume().catch(()=>{});
+    const b=await getBossBuffer();
+    stopSource();stopBoss();
+    const n=c.createBufferSource(),g=c.createGain();g.gain.value=.32;
+    n.buffer=b;n.loop=true;n.connect(g);g.connect(output);n.onended=()=>{if(bossSource===n)bossSource=null};
+    bossSource=n;n.start(0);
+  }
+  function preloadBoss(){getBossBuffer().catch(()=>{});getAppearBuffer().catch(()=>{});}
+  async function restoreNormal(){
+    stopBoss();stopAppear();musicMode='normal';offset=0;await enable('restore-normal');
+  }
+
   function unlock(){const c=ensure();if(c&&!document.hidden&&c.state!=='running')c.resume().catch(()=>{});return c;}
   function pause(){serial++;away=true;stopSource();stopEffects();if(context&&context.state!=='closed'){levels();context.suspend().catch(()=>{});}pending=false;render();}
   function setVolume(kind,value){
@@ -130,7 +179,7 @@
       wanted,waiting,pending,error,position:position(),duration:buffer?.duration||0,requestCount,starts,maxConcurrent,active:source?1:0,voices:voices.size,
       bgmVolume,effectsVolume,rms,channels:channels.size,sounds:{...sounds}};
   }
-  window.PazugoruAudio=Object.freeze({channel,unlock,registerVoice,stopEffects,enable,levels,setVolume,info,count:name=>{if(name in sounds)sounds[name]++;}});
+  window.PazugoruAudio=Object.freeze({channel,unlock,registerVoice,stopEffects,enable,levels,setVolume,info,playBoss,stopBoss,playBossAppear,restoreNormal,preloadBoss,count:name=>{if(name in sounds)sounds[name]++;}});
   for(const type of ['pointerdown','pointerup','touchend','keydown'])document.addEventListener(type,e=>{
     if(!e.isTrusted||document.hidden||(e.type==='keydown'&&e.repeat))return;
     if(e.pointerType==='mouse'&&e.button!==0)return;

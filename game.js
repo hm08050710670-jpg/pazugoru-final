@@ -65,11 +65,8 @@ function matchBurst(point,size,combo){const count=Math.min(16,6+Math.max(0,size-
     playerNumber:$('playerNumber'), count:$('turnCount'), attackCount:$('attackCount'),
     dragon:$('dragon'), anchor:$('dragonAnchor'), effects:$('effects'), word:$('battle-word'),
     menu:$('menuButton'), help:$('helpLayer'), result:$('resultLayer') };
-  const bossMusic=new window.Audio('boss-bgm.wav');bossMusic.loop=true;bossMusic.preload='auto';bossMusic.volume=.32;
-  function stopBossMusic(){try{bossMusic.pause();bossMusic.currentTime=0;}catch(e){}}
-  async function startBossMusic(){
-    try{Audio.stopEffects();bossMusic.currentTime=0;await bossMusic.play();}catch(e){}
-  }
+  function stopBossMusic(){try{Audio.stopBoss();}catch(e){}}
+  async function startBossMusic(){try{await Audio.playBoss();}catch(e){console.warn('Boss BGM:',e)}}
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const state = { phase:'loading', grid:[], tiles:new Map(), nextId:1, drag:null,
     turn:0, enemy:CONFIG.enemyMax, player:CONFIG.playerMax, maxCombo:0,
@@ -757,7 +754,7 @@ async function enemyShot(epoch){
     await wait(motion(1450),state.epoch);clear.remove();sparkle.remove();
   }
   async function finish(win){
-    if(COURSE_BOSS.has(activeStage?.id))stopBossMusic();
+    if(COURSE_BOSS.has(activeStage?.id)){try{void Audio.restoreNormal();}catch(e){stopBossMusic();}}
     setPhase('ended');clearTimeout(faceTimer);clearTimeout(expressionTimer);
     const currentCourse=courseOf(activeStage?.id),nextId=Assets.nextId();
     if(win&&!COURSE_BOSS.has(activeStage?.id)&&nextId&&courseOf(nextId)===currentCourse){
@@ -774,15 +771,17 @@ async function enemyShot(epoch){
     const nsb=$('nextStageButton');if(nsb)nsb.hidden=true;
     $('resultTurns').textContent=`${state.turn} ターン`;$('resultCombo').textContent=`最高 ${state.maxCombo} COMBO`;
     let mapBtn=$('mapReturnButton');
-    if(!mapBtn){mapBtn=document.createElement('button');mapBtn.id='mapReturnButton';mapBtn.className='map-return';mapBtn.textContent='ステージ選択へ';$('retryButton').parentElement.appendChild(mapBtn);mapBtn.addEventListener('click',()=>{ui.result.hidden=true;modalMode(false);stopBossMusic();showStageMap()});}
+    if(!mapBtn){mapBtn=document.createElement('button');mapBtn.id='mapReturnButton';mapBtn.className='map-return';mapBtn.textContent='ステージ選択へ';$('retryButton').parentElement.appendChild(mapBtn);mapBtn.addEventListener('click',()=>{ui.result.hidden=true;modalMode(false);try{void Audio.restoreNormal();}catch(e){stopBossMusic();}showStageMap()});}
     mapBtn.hidden=false;$('retryButton').textContent=win?'もう一度あそぶ':'もう一度挑戦';$('retryButton').focus({preventScroll:true});
   }
   async function bossIntro(){
     const layer=$('bossIntro');if(!layer)return;
-    layer.hidden=false;layer.setAttribute('aria-hidden','false');BattleSound.enemy();bossAlarm();setTimeout(()=>{void startBossMusic();},720);
+    layer.hidden=false;layer.setAttribute('aria-hidden','false');BattleSound.enemy();
     const word=layer.querySelector('.boss-intro-word');
-    const a=animateElement(word,[{transform:'scale(.55)',opacity:0},{transform:'scale(1.16)',opacity:1,offset:.58},{transform:'scale(1)',opacity:1}],{duration:motion(760),easing:'cubic-bezier(.18,.8,.25,1)',fill:'both'});
-    await wait(motion(1250),state.epoch);layer.hidden=true;layer.setAttribute('aria-hidden','true');if(a)a.cancel();
+    const a=animateElement(word,[{transform:'scale(.55)',opacity:0},{transform:'scale(1.16)',opacity:1,offset:.42},{transform:'scale(1)',opacity:1}],{duration:motion(900),easing:'cubic-bezier(.18,.8,.25,1)',fill:'both'});
+    try{await Audio.playBossAppear();}catch(e){await wait(motion(2200),state.epoch);}
+    layer.hidden=true;layer.setAttribute('aria-hidden','true');if(a)a.cancel();
+    await startBossMusic();
   }
   ui.menu.addEventListener('click',()=>{if(state.phase!=='ready')return;ui.help.hidden=false;modalMode(true);$('helpClose').focus({preventScroll:true});});
   $('helpClose').addEventListener('click',()=>{ui.help.hidden=true;modalMode(false);idleStamp=performance.now();ui.menu.focus({preventScroll:true});});
@@ -790,7 +789,7 @@ async function enemyShot(epoch){
   if(menuMapButton)menuMapButton.addEventListener('click',()=>{
     const ok=confirm('現在のバトルを終了してステージ選択に戻りますか？');
     if(!ok)return;
-    ui.help.hidden=true;modalMode(false);stopBossMusic();setPhase('loading');showStageMap();
+    ui.help.hidden=true;modalMode(false);try{void Audio.restoreNormal();}catch(e){stopBossMusic();}setPhase('loading');showStageMap();
   });
   $('resetButton').addEventListener('click',()=>resetGame());$('retryButton').addEventListener('click',()=>resetGame());
   
@@ -836,62 +835,64 @@ async function enemyShot(epoch){
   window.addEventListener('pagehide',()=>{clearInterval(idleClock);if(poseAnimation)poseAnimation.cancel();});
   window.addEventListener('pageshow',()=>{if(directorReady){clearInterval(idleClock);idleClock=setInterval(idlePose,700);}});
 
-  function getUiAudio(){
-    try{
-      const C=window.AudioContext||window.webkitAudioContext;
-      if(!C)return null;
-      const c=uiClick.ctx||(uiClick.ctx=new C());
-      if(c.state==='suspended')c.resume().catch(()=>{});
-      return c;
-    }catch(e){return null}
-  }
   function uiClick(){
-    const c=getUiAudio();if(!c)return;
     try{
-      const t=c.currentTime+.005,o=c.createOscillator(),gain=c.createGain();
-      o.type='square';o.frequency.setValueAtTime(920,t);o.frequency.exponentialRampToValueAtTime(520,t+.07);
-      gain.gain.setValueAtTime(.11,t);gain.gain.exponentialRampToValueAtTime(.001,t+.075);
-      o.connect(gain);gain.connect(c.destination);o.start(t);o.stop(t+.08);
+      const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
+      const c=uiClick.ctx||(uiClick.ctx=new C()),o=c.createOscillator(),gain=c.createGain();
+      o.type='sine';o.frequency.setValueAtTime(760,c.currentTime);o.frequency.exponentialRampToValueAtTime(520,c.currentTime+.055);
+      gain.gain.setValueAtTime(.055,c.currentTime);gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+.06);
+      o.connect(gain);gain.connect(c.destination);o.start();o.stop(c.currentTime+.065);
     }catch(e){}
   }
   function bossAlarm(){
     const c=getUiAudio();if(!c)return;
-    try{
-      const t=c.currentTime+.02;
-      [0,.22,.44].forEach((d,i)=>{
-        const o=c.createOscillator(),gain=c.createGain();
-        o.type='sawtooth';o.frequency.setValueAtTime(i%2?690:940,t+d);
-        o.frequency.linearRampToValueAtTime(i%2?940:690,t+d+.18);
-        gain.gain.setValueAtTime(.075,t+d);gain.gain.exponentialRampToValueAtTime(.001,t+d+.19);
-        o.connect(gain);gain.connect(c.destination);o.start(t+d);o.stop(t+d+.20);
-      });
-    }catch(e){}
+    const t=c.currentTime+.01;
+    [0,.23,.46].forEach((d,i)=>{const o=c.createOscillator(),v=c.createGain();o.type='sawtooth';o.frequency.setValueAtTime(i%2?650:950,t+d);o.frequency.linearRampToValueAtTime(i%2?950:650,t+d+.19);v.gain.setValueAtTime(.10,t+d);v.gain.exponentialRampToValueAtTime(.001,t+d+.2);o.connect(v);v.connect(c.destination);o.start(t+d);o.stop(t+d+.21)});
   }
   function pressFx(b){b.classList.add('pressed');uiClick();setTimeout(()=>b.classList.remove('pressed'),90)}
+  function getUiAudio(){
+    try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;const c=uiClick.ctx||(uiClick.ctx=new C());if(c.state==='suspended')c.resume().catch(()=>{});return c}catch(e){return null}
+  }
+  function uiClick(){
+    const c=getUiAudio();if(!c)return;
+    try{const t=c.currentTime+.005,o=c.createOscillator(),v=c.createGain();o.type='square';o.frequency.setValueAtTime(980,t);o.frequency.exponentialRampToValueAtTime(480,t+.075);v.gain.setValueAtTime(.13,t);v.gain.exponentialRampToValueAtTime(.001,t+.08);o.connect(v);v.connect(c.destination);o.start(t);o.stop(t+.085)}catch(e){}
+  }
+  function bossAlarm(){
+    const c=getUiAudio();if(!c)return;const t=c.currentTime+.01;
+    try{[0,.23,.46].forEach((d,i)=>{const o=c.createOscillator(),v=c.createGain();o.type='sawtooth';o.frequency.setValueAtTime(i%2?650:950,t+d);o.frequency.linearRampToValueAtTime(i%2?950:650,t+d+.19);v.gain.setValueAtTime(.11,t+d);v.gain.exponentialRampToValueAtTime(.001,t+d+.20);o.connect(v);v.connect(c.destination);o.start(t+d);o.stop(t+d+.21)})}catch(e){}
+  }
+  function pressFx(b){b.classList.add('pressed');uiClick();setTimeout(()=>b.classList.remove('pressed'),120)}
   document.querySelectorAll('.stage-node[data-course]').forEach(b=>b.addEventListener('click',()=>{if(!b.disabled){pressFx(b);setTimeout(()=>startCourse(Number(b.dataset.course)),70)}}));
   updateStageMap();
   const worldMapPreload=new Image();worldMapPreload.src='world-bg.webp';
   (async()=>{
     const loader=document.getElementById('bootLoader'),pct=document.getElementById('bootPercent');
-    const urls=['start-screen.webp','world-bg.webp','battle-riverside.webp','c1-korafu.png'];
-    let done=0;
-    const one=src=>new Promise(resolve=>{const im=new Image();const finish=()=>{done++;if(pct)pct.textContent=Math.round(done/urls.length*100)+'%';resolve()};im.onload=()=>{if(im.decode)im.decode().then(finish).catch(finish);else finish()};im.onerror=finish;im.src=src});
-    await Promise.race([Promise.all(urls.map(one)),new Promise(r=>setTimeout(r,5000))]);
+    const imageUrls=['start-screen.webp','world-bg.webp','battle-riverside.webp','c1-korafu.png'];
+    const audioUrls=['bgm.mp3','boss-appear.wav','boss-bgm.wav'];
+    const total=imageUrls.length+audioUrls.length;let done=0,finished=false;
+    const progress=()=>{done++;if(pct)pct.textContent=Math.min(100,Math.round(done/total*100))+'%'};
+    const imageJob=src=>new Promise(resolve=>{
+      const im=new Image(),finish=()=>{progress();resolve()};
+      im.onload=()=>{if(im.decode)im.decode().then(finish).catch(finish);else finish()};im.onerror=finish;im.src=src;
+    });
+    const audioJob=src=>fetch(src,{cache:'force-cache'}).then(r=>{if(!r.ok)throw Error(src);return r.arrayBuffer()}).then(()=>progress()).catch(()=>progress());
+    const jobs=[...imageUrls.map(imageJob),...audioUrls.map(audioJob)];
+    // START is shown only after critical assets are in browser cache.
+    // 8s fail-open prevents a network problem from trapping the user.
+    await Promise.race([Promise.all(jobs),new Promise(r=>setTimeout(r,8000))]);
+    if(pct)pct.textContent='100%';
+    try{Audio.preloadBoss();}catch(e){}
     if(loader){loader.classList.add('ready');setTimeout(()=>loader.remove(),260)}
   })();
   const opening=document.getElementById('openingScreen'),map=document.getElementById('stageMap');
   if(map)map.hidden=true;
   const startButton=document.getElementById('gameStartButton');
-  if(startButton)startButton.addEventListener('click',()=>{
-    pressFx(startButton);getUiAudio();
-    // iOS: unlock the boss music element during this real user gesture.
-    try{
-      const oldVol=bossMusic.volume;bossMusic.volume=0;bossMusic.currentTime=0;
-      const p=bossMusic.play();
-      if(p&&p.then)p.then(()=>{bossMusic.pause();bossMusic.currentTime=0;bossMusic.volume=oldVol;}).catch(()=>{bossMusic.volume=oldVol;});
-    }catch(e){}
-    setTimeout(()=>{opening.hidden=true;showStageMap();requestAnimationFrame(()=>{try{Audio.unlock().then(()=>Audio.start()).catch(()=>{});}catch(e){}});},105);
-  });
+  if(startButton){
+    startButton.addEventListener('pointerdown',()=>{startButton.classList.add('pressed');uiClick();try{Audio.unlock();Audio.preloadBoss();void Audio.enable('start');}catch(e){}},{passive:true});
+    startButton.addEventListener('pointerup',()=>startButton.classList.remove('pressed'),{passive:true});
+    startButton.addEventListener('pointercancel',()=>startButton.classList.remove('pressed'),{passive:true});
+    startButton.addEventListener('click',()=>{setTimeout(()=>{opening.hidden=true;showStageMap();},65);});
+  }
 
   // Test-only helpers are absent from a normal URL. No server/score writes exist.
   if(new URLSearchParams(location.search).get('test')==='1'){
